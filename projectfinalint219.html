@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HALOROUTE</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="application/javascript"></script>
+    <style>
+        :root { --bg-dark: #0b0f19; --bg-panel: #131b2e; --accent-red: #ff3b30; --accent-blue: #0a84ff; --accent-green: #30d158; --text-main: #ffffff; --text-muted: #8e9aaf; --border: #2c3b55; --shadow: rgba(0, 0, 0, 0.5); }
+        [data-theme="light"] { --bg-dark: #f0f2f5; --bg-panel: #ffffff; --accent-red: #dc3545; --accent-blue: #007bff; --accent-green: #28a745; --text-main: #1c1e21; --text-muted: #65676b; --border: #ced0d4; --shadow: rgba(0, 0, 0, 0.1); }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; transition: background-color 0.3s, color 0.3s; }
+        body { background-color: var(--bg-dark); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- NAVIGATION --- */
+        .nav-link { background: transparent; border: none; color: var(--text-muted); font-weight: bold; cursor: pointer; padding: 8px 15px; text-transform: uppercase; font-size: 12px; border-bottom: 2px solid transparent; }
+        .nav-link:hover { color: var(--text-main); }
+        .nav-link.active { color: var(--accent-blue); border-bottom: 2px solid var(--accent-blue); }
+        
+        /* --- PAGES (SPA LOGIC) --- */
+        .page-section { display: none; height: calc(100vh - 60px); width: 100%; }
+        .page-section.active { display: block; }
+        
+        /* HEADER */
+        header { height: 60px; padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-panel); z-index: 10; }
+        
+        /* TRACKER PAGE STYLES */
+        .tracker-container { padding: 30px; max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; height: 100%; }
+        .search-bar { display: flex; gap: 10px; }
+        .search-input { flex: 1; padding: 15px; background: var(--bg-panel); border: 1px solid var(--border); color: white; border-radius: 6px; font-family: 'Courier New', monospace; }
+        .scan-btn { padding: 15px 30px; background: var(--accent-blue); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        #trackerMap { width: 100%; height: 400px; border-radius: 12px; border: 1px solid var(--border); display: none; }
+        .target-info { background: rgba(10, 132, 255, 0.1); padding: 20px; border-radius: 6px; border-left: 3px solid var(--accent-blue); display: none; }
+
+        /* SETTINGS PAGE STYLES */
+        .settings-container { padding: 40px; max-width: 600px; margin: 0 auto; overflow-y: auto; }
+        .setting-group { background: var(--bg-panel); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .setting-row:last-child { margin-bottom: 0; }
+        .setting-desc { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+        
+        /* SWITCH TOGGLE */
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent-blue); }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        /* --- DASHBOARD STYLES --- */
+        .container { display: grid; grid-template-columns: 1fr 320px; height: 100%; }
+        #map { width: 100%; height: 100%; background: #000; z-index: 1; }
+        .sidebar { background: var(--bg-dark); border-left: 1px solid var(--border); padding: 15px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 15px; box-shadow: 0 2px 5px var(--shadow); }
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; font-weight: bold; }
+        .panic-btn { background: linear-gradient(135deg, #ff3b30, #cc0000); color: white; border: none; width: 100%; padding: 15px; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; box-shadow: 0 0 20px rgba(255, 59, 48, 0.4); margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .panic-active { animation: pulse-red 0.8s infinite; }
+        
+        /* Contact List Styles */
+        .contact-input-group { display: flex; gap: 5px; margin-bottom: 10px; }
+        .contact-input { flex: 1; background: var(--bg-dark); border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px; font-size: 12px; }
+        .add-btn { background: var(--border); color: var(--text-main); border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .saved-contacts { display: flex; flex-wrap: wrap; gap: 5px; }
+        .contact-chip { background: rgba(10, 132, 255, 0.1); color: var(--accent-blue); border: 1px solid var(--accent-blue); padding: 4px 8px; border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 5px; }
+        
+        .gps-btn { background: var(--accent-blue); color: white; border: none; padding: 5px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        .gps-active { background: var(--accent-green); animation: pulse-green 2s infinite; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-box { background: var(--bg-dark); padding: 10px; border-radius: 4px; border: 1px solid transparent; }
+        .stat-val { font-size: 24px; font-weight: bold; display: block; }
+        .stat-label { font-size: 11px; color: var(--text-muted); }
+        .text-green { color: var(--accent-green); }
+        .text-red { color: var(--accent-red); }
+
+        /* --- POPUPS & AI --- */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(8px); z-index: 1000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease; }
+        .modal-box { background: #0b0f19; width: 450px; border-radius: 16px; border: 2px solid var(--accent-red); padding: 0; overflow: hidden; box-shadow: 0 0 50px rgba(255, 59, 48, 0.3); transform: scale(0.9); transition: transform 0.3s ease; }
+        .radar-header { background: linear-gradient(90deg, #3a0b0b, #1a0505); padding: 15px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--accent-red); }
+        .radar-icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--accent-red); position: relative; display: flex; align-items: center; justify-content: center; }
+        .radar-icon::after { content: ''; position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 1px solid var(--accent-red); animation: ripple 1.5s infinite; }
+        .radar-circle { width: 10px; height: 10px; background: var(--accent-red); border-radius: 50%; }
+        .modal-content { padding: 25px; }
+        .status-row { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; font-family: 'Courier New', monospace; font-size: 14px; }
+        .contact-item { display: flex; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; align-items: center; margin-bottom: 5px; }
+        .status-badge { font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
+        .status-sent { background: rgba(48, 209, 88, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .status-pending { background: rgba(255, 159, 10, 0.2); color: #ff9f0a; border: 1px solid #ff9f0a; animation: blink 1s infinite; }
+        .modal-footer { padding: 15px; background: #131b2e; text-align: center; }
+        .close-btn { background: #333; color: white; border: none; padding: 10px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; border: 1px solid #555; }
+        .show-modal { opacity: 1; }
+        .show-modal .modal-box { transform: scale(1); }
+
+        .ai-widget { position: fixed; bottom: 20px; right: 20px; width: 350px; z-index: 2000; display: none; }
+        .ai-toggle { position: absolute; bottom: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, #0a84ff, #0056b3); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 15px var(--shadow); font-size: 24px; animation: float 3s ease-in-out infinite; }
+        .ai-window { position: absolute; bottom: 80px; right: 0; width: 100%; height: 450px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; transform-origin: bottom right; transform: scale(0); opacity: 0; transition: all 0.3s; }
+        .ai-window.open { transform: scale(1); opacity: 1; }
+        .ai-header { padding: 15px; background: var(--accent-blue); color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .ai-messages { flex: 1; padding: 15px; overflow-y: auto; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+        .ai-input-area { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+        .ai-input { flex: 1; background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 4px; outline: none; }
+
+        @keyframes ripple { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(48, 209, 88, 0); } }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
+    </style>
+</head>
+
+<body>
+
+    <div id="login-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-dark); z-index:9999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
+        <div style="background:var(--bg-panel); padding:40px; border-radius:12px; border:1px solid var(--border); width:350px; text-align:center;">
+            <div style="color:var(--accent-blue); font-size:24px; margin-bottom:30px; font-weight:bold;">HALOROUTE 🔒</div>
+            <input type="text" id="username" value="admin" style="width:100%; padding:12px; margin-bottom:15px; background:var(--bg-dark); border:1px solid var(--border); color:var(--text-main); border-radius:6px;">
+            <input type="password" id="password" value="1234" style="width:100%; padding:12px; margin-bottom:15px; background:var(--bg-dark); border:1px solid var(--border); color:var(--text-main); border-radius:6px;">
+            <button onclick="attemptLogin()" style="width:100%; padding:12px; background:var(--accent-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">AUTHENTICATE</button>
+        </div>
+    </div>
+
+    <header style="filter:blur(10px);" id="main-header">
+        <div>
+            <h1 style="font-size: 18px; text-transform: uppercase;">HaloRoute</h1>
+            <span style="color: var(--text-muted); font-size: 12px;">Satellite Grid</span>
+        </div>
+        
+        <nav style="display: flex; gap: 5px;">
+            <button class="nav-link active" onclick="showPage('dashboard')" id="nav-dashboard">Dashboard</button>
+            <button class="nav-link" onclick="showPage('tracker')" id="nav-tracker">ID Tracker</button>
+            <button class="nav-link" onclick="showPage('settings')" id="nav-settings">Settings</button>
+        </nav>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+            <button class="gps-btn" id="gpsToggle" onclick="toggleGPS()">
+                <span>⌖</span> <span id="gpsText">ENABLE GPS</span>
+            </button>
+        </div>
+    </header>
+
+    <div id="dashboard" class="page-section active" style="filter:blur(10px);">
+        <div id="panicModal" class="modal-overlay">
+            <div class="modal-box">
+                <div class="radar-header">
+                    <div class="radar-icon"><div class="radar-circle"></div></div>
+                    <div>
+                        <div style="color:var(--accent-red); font-weight:bold; font-size:18px; letter-spacing:1px;">SOS BROADCAST</div>
+                        <div style="font-size:11px; color:#888;">ENCRYPTED MESH NETWORK</div>
+                    </div>
+                </div>
+                <div class="modal-content">
+                    <div class="status-row"><span>COORDINATES LOCKED</span><span style="color:var(--accent-green)">[ 28.6139, 77.2090 ]</span></div>
+                    <div class="status-row"><span>POLICE DISPATCH</span><span style="color:var(--accent-green)">EN ROUTE (4 MIN)</span></div>
+                    
+                    <div style="margin-top: 20px; font-size: 12px; color: #888; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 5px;">Contact Notification Status</div>
+                    <div id="panicContactList" style="margin-top:10px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="close-btn" onclick="closeModal()">SECURE & CLOSE</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div id="map"></div>
+            <aside class="sidebar">
+                <div class="card" style="border-color: rgba(255, 59, 48, 0.4); background: rgba(255, 59, 48, 0.05);">
+                    <div class="card-header"><span style="color:var(--accent-red)">Emergency Protocol</span><span class="text-red">● ARMED</span></div>
+                    <button class="panic-btn" id="panicBtn" onclick="triggerPanic()"><span>⚠</span> INITIATE PANIC</button>
+                    <div style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">👥 ALERT LIST</div>
+                        <div class="contact-input-group">
+                            <input type="text" id="newContactName" class="contact-input" placeholder="Name (e.g. Dad, Police)">
+                            <button class="add-btn" onclick="addContact()">+ Add</button>
+                        </div>
+                        <div class="saved-contacts" id="savedContactsList"></div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">Safety Console</div>
+                    <div class="stats-grid">
+                        <div class="stat-box"><span class="stat-val text-green" id="safetyScore">95</span><span class="stat-label">Safety Score</span></div>
+                        <div class="stat-box"><span class="stat-val" id="zoneStatus" style="font-size: 14px; margin-top:5px;">Normal Area</span><span class="stat-label">Zone Status</span></div>
+                    </div>
+                </div>
+                
+                <div class="card" id="idCard">
+                    <div class="card-header">Blockchain Digital ID</div>
+                    <div id="connect-ui" style="text-align: center; padding: 10px;">
+                        <button class="theme-btn" id="connectBtn" style="background: var(--accent-blue); color: white; border: none; width: 100%; padding: 10px;" onclick="connectWallet()">🦊 Connect Wallet</button>
+                    </div>
+                    <div id="wallet-ui" style="display: none;">
+                        <div style="font-family:'Courier New'; color:var(--accent-blue); text-align:center; padding:10px; background:rgba(10,132,255,0.1); border:1px dashed var(--accent-blue); font-size:11px;" id="walletAddress">0x...</div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="tracker" class="page-section" style="filter:blur(10px);">
+        <div class="tracker-container">
+            <h2 style="text-transform: uppercase; border-bottom:1px solid var(--border); padding-bottom:10px;">Blockchain ID Search</h2>
+            <div class="search-bar">
+                <input type="text" class="search-input" id="targetId" placeholder="Enter Target Wallet Address (0x...)">
+                <button class="scan-btn" onclick="trackTarget()">SCAN NETWORK</button>
+            </div>
+            
+            <div id="trackerLoading" style="display:none; text-align:center; color:var(--accent-blue);">
+                <p>Triangulating Signal...</p>
+            </div>
+
+            <div id="targetInfo" class="target-info">
+                <h3 style="margin-bottom:10px;">Target Found</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:13px;">
+                    <div>Last Seen: <span style="color:white">Just now</span></div>
+                    <div>Safety Status: <span style="color:var(--accent-green)">SAFE</span></div>
+                    <div>Distance: <span style="color:white">2.4 km</span></div>
+                    <div>Hash: <span style="color:var(--text-muted)">0x72a...99b</span></div>
+                </div>
+            </div>
+
+            <div id="trackerMap"></div>
+        </div>
+    </div>
+
+    <div id="settings" class="page-section" style="filter:blur(10px);">
+        <div class="settings-container">
+            <h2 style="margin-bottom:30px;">System Configuration</h2>
+            
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <strong>Ghost Mode</strong>
+                        <div class="setting-desc">Hide your location from public tracking mesh.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <h3 style="font-size:14px; margin-bottom:15px; text-transform:uppercase; color:var(--accent-blue);">Alert Thresholds</h3>
+                <div class="setting-row">
+                    <div>
+                        <strong>Danger Zone Sensitivity</strong>
+                        <div class="setting-desc">Alert when safety score drops below 40.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div>
+                        <strong>Auto-Panic</strong>
+                        <div class="setting-desc">Trigger SOS if sudden impact/fall detected.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <h3 style="font-size:14px; margin-bottom:15px; text-transform:uppercase; color:var(--accent-blue);">Notification Channels</h3>
+                <div class="setting-row">
+                    <div><strong>SMS Alerts</strong></div>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><strong>Email Reports</strong></div>
+                    <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><strong>Local Police Data Share</strong></div>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+            </div>
+
+            <button onclick="alert('Settings Saved Successfully!')" style="width:100%; padding:15px; background:var(--accent-green); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">SAVE CONFIGURATION</button>
+        </div>
+    </div>
+
+    <div class="ai-widget" id="aiWidget">
+        <div class="ai-toggle" onclick="toggleAI()">✨</div>
+        <div class="ai-window" id="aiWindow">
+            <div class="ai-header"><span>HaloAI</span><span style="cursor:pointer;" onclick="toggleAI()">×</span></div>
+            <div class="ai-messages" id="chatHistory"><div class="msg" style="background:var(--bg-dark); padding:10px; border-radius:5px;">HaloAI Online. GPS Status: Standby.</div></div>
+            <div class="ai-input-area">
+                <input type="text" class="ai-input" id="userMsg" placeholder="Ask AI..." onkeypress="handleEnter(event)">
+                <button onclick="callGemini()" style="background:var(--accent-blue); color:white; border:none; padding:0 15px; border-radius:4px;">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // CONFIG
+        const GEMINI_API_KEY = "AIzaSyDPm8beHyygBPjQxskniNSopmxLJPsEcok"; 
+        
+        // DATA
+        let watchId = null;
+        let trackingEnabled = false;
+        let emergencyContacts = ["Local Police"];
+
+        // MAPS
+        let dashboardMap, trackerMap;
+        let userMarker, targetMarker;
+        let dangerZone;
+
+        // --- NAVIGATION LOGIC ---
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+            
+            // Show selected
+            document.getElementById(pageId).classList.add('active');
+            document.getElementById('nav-' + pageId).classList.add('active');
+
+            // Resize maps if needed (Leaflet glitch fix)
+            if(pageId === 'dashboard' && dashboardMap) dashboardMap.invalidateSize();
+            if(pageId === 'tracker' && trackerMap) trackerMap.invalidateSize();
+        }
+
+        // --- DASHBOARD MAP INIT ---
+        function initDashboardMap() {
+            dashboardMap = L.map('map').setView([28.6139, 77.2090], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap' }).addTo(dashboardMap);
+            
+            dangerZone = L.polygon([[28.62, 77.21], [28.63, 77.22], [28.61, 77.23]], { color: 'red', fillColor: '#f03', fillOpacity: 0.2 }).addTo(dashboardMap);
+            
+            const userIcon = L.divIcon({ className: 'c-icon', html: "<div style='background:#0a84ff; width:15px; height:15px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #0a84ff; cursor:grab;'></div>" });
+            userMarker = L.marker([28.6139, 77.2090], { icon: userIcon, draggable: true }).addTo(dashboardMap);
+            
+            userMarker.on('dragstart', () => { if (trackingEnabled) { trackingEnabled = false; updateGPSButtonUI(false); } });
+            userMarker.on('dragend', e => checkSafety(e.target.getLatLng().lat, e.target.getLatLng().lng));
+        }
+
+        // --- TRACKER PAGE LOGIC ---
+        function trackTarget() {
+            const id = document.getElementById('targetId').value;
+            if(!id) return alert("Please enter a Wallet Address.");
+
+            const loader = document.getElementById('trackerLoading');
+            const info = document.getElementById('targetInfo');
+            const mapContainer = document.getElementById('trackerMap');
+
+            info.style.display = "none";
+            mapContainer.style.display = "none";
+            loader.style.display = "block";
+
+            // SIMULATE DELAY
+            setTimeout(() => {
+                loader.style.display = "none";
+                info.style.display = "block";
+                mapContainer.style.display = "block";
+
+                // Init Tracker Map if not exists
+                if(!trackerMap) {
+                    trackerMap = L.map('trackerMap').setView([28.61, 77.21], 13);
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(trackerMap);
+                }
+                
+                // Add simulated target marker
+                if(targetMarker) trackerMap.removeLayer(targetMarker);
+                const targetIcon = L.divIcon({ html: "<div style='background:#30d158; width:15px; height:15px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #30d158;'></div>" });
+                targetMarker = L.marker([28.615, 77.215], {icon: targetIcon}).addTo(trackerMap).bindPopup("Target: " + id.substring(0,6)).openPopup();
+                trackerMap.invalidateSize();
+
+            }, 1500);
+        }
+
+        // --- SAFETY LOGIC ---
+        function checkSafety(lat, lng) {
+            let inside = false;
+            const poly = [[28.62, 77.21], [28.63, 77.22], [28.61, 77.23]];
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                let xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+                if (((yi > lng) != (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) inside = !inside;
+            }
+            const border = document.querySelector('.leaflet-container');
+            if (inside) {
+                document.getElementById('safetyScore').innerText = "15"; document.getElementById('safetyScore').className = "stat-val text-red";
+                document.getElementById('zoneStatus').innerText = "⚠ DANGER ZONE"; document.getElementById('zoneStatus').className = "stat-val text-red";
+                border.style.border = "5px solid red";
+            } else {
+                document.getElementById('safetyScore').innerText = "95"; document.getElementById('safetyScore').className = "stat-val text-green";
+                document.getElementById('zoneStatus').innerText = "Normal Area"; document.getElementById('zoneStatus').className = "stat-val";
+                border.style.border = "none";
+            }
+        }
+
+        // --- GPS LOGIC ---
+        function toggleGPS() { trackingEnabled ? stopGPS() : startGPS(); }
+        function startGPS() {
+            if (navigator.geolocation) {
+                trackingEnabled = true; updateGPSButtonUI(true);
+                watchId = navigator.geolocation.watchPosition(pos => {
+                    if (trackingEnabled) {
+                        const {latitude: lat, longitude: lng} = pos.coords;
+                        userMarker.setLatLng([lat, lng]); dashboardMap.setView([lat, lng], 16);
+                        checkSafety(lat, lng);
+                    }
+                }, err => stopGPS(), { enableHighAccuracy: true });
+            }
+        }
+        function stopGPS() { trackingEnabled = false; if(watchId) navigator.geolocation.clearWatch(watchId); updateGPSButtonUI(false); }
+        function updateGPSButtonUI(isActive) {
+            const btn = document.getElementById('gpsToggle');
+            btn.innerHTML = isActive ? `<span>⌖</span> TRACKING ACTIVE` : `<span>⌖</span> RESUME GPS`;
+            btn.className = isActive ? 'gps-btn gps-active' : 'gps-btn';
+        }
+
+        // --- CONTACTS & PANIC ---
+        function renderContacts() {
+            document.getElementById('savedContactsList').innerHTML = emergencyContacts.map((c, i) => 
+                `<div class="contact-chip">${c} <span onclick="removeContact(${i})">×</span></div>`
+            ).join('');
+        }
+        function addContact() {
+            const input = document.getElementById('newContactName');
+            if(input.value.trim()) { emergencyContacts.push(input.value.trim()); input.value = ""; renderContacts(); }
+        }
+        function removeContact(i) { emergencyContacts.splice(i, 1); renderContacts(); }
+
+        function triggerPanic() {
+            const modal = document.getElementById('panicModal');
+            document.getElementById('panicContactList').innerHTML = emergencyContacts.map(c => `
+                <div class="contact-item"><span>${c}</span><span class="status-badge status-pending">SENDING...</span></div>
+            `).join('');
+            modal.style.display = "flex";
+            setTimeout(() => modal.classList.add('show-modal'), 10);
+            setTimeout(() => {
+                document.querySelectorAll('.status-pending').forEach(b => {
+                    b.classList.remove('status-pending'); b.classList.add('status-sent'); b.innerText = "DELIVERED ✔";
+                });
+            }, 1500);
+        }
+        function closeModal() {
+            const modal = document.getElementById('panicModal');
+            modal.classList.remove('show-modal');
+            setTimeout(() => modal.style.display = "none", 300);
+        }
+
+        // --- WALLET (WITH SIMULATION) ---
+        async function connectWallet() {
+            const connectUI = document.getElementById('connect-ui');
+            const walletUI = document.getElementById('wallet-ui');
+            const addrTxt = document.getElementById('walletAddress');
+            const btn = document.getElementById('connectBtn');
+
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    const provider = new ethers.providers.Web3Provider(window.ethereum);
+                    await provider.send("eth_requestAccounts", []);
+                    const addr = await provider.getSigner().getAddress();
+                    connectUI.style.display = "none";
+                    walletUI.style.display = "block";
+                    addrTxt.innerText = addr.substring(0, 15) + "...";
+                } catch (err) { alert("Connection rejected"); }
+            } else {
+                // SIMULATION MODE (Re-added per request)
+                btn.innerText = "Simulating Connection...";
+                setTimeout(() => {
+                    const fakeAddr = "0x71C" + Math.random().toString(16).substr(2, 38);
+                    connectUI.style.display = "none";
+                    walletUI.style.display = "block";
+                    addrTxt.innerText = fakeAddr.substring(0, 15) + "... (SIMULATED)";
+                    // Also populate the tracker input for convenience
+                    document.getElementById('targetId').value = fakeAddr;
+                }, 1000);
+            }
+        }
+
+        // --- SYSTEM INIT ---
+        function attemptLogin() {
+            if(document.getElementById('username').value === "admin") {
+                document.getElementById('login-overlay').style.display = "none";
+                document.getElementById('main-header').style.filter = "none";
+                document.getElementById('dashboard').style.filter = "none";
+                document.getElementById('tracker').style.filter = "none";
+                document.getElementById('settings').style.filter = "none";
+                document.getElementById('aiWidget').style.display = "block";
+                
+                initDashboardMap();
+                renderContacts();
+            }
+        }
+
+        // --- AI ---
+        function toggleAI() { document.getElementById('aiWindow').classList.toggle('open'); }
+        async function callGemini() {
+            const input = document.getElementById('userMsg');
+            const txt = input.value.trim();
+            if(!txt) return;
+            document.getElementById('chatHistory').innerHTML += `<div class="msg" style="background:rgba(10,132,255,0.2); align-self:flex-end; border-radius:5px; margin:5px 0;">${txt}</div>`;
+            input.value = "";
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: "Context: HaloRoute Safety App. Be brief.\nUser: " + txt }] }] })
+                });
+                const data = await res.json();
+                const ans = data.candidates[0].content.parts[0].text;
+                document.getElementById('chatHistory').innerHTML += `<div class="msg" style="background:var(--bg-dark); border:1px solid var(--border); border-radius:5px; margin:5px 0;">${ans}</div>`;
+            } catch(e) { console.error(e); }
+        }
+        function handleEnter(e) { if(e.key === 'Enter') callGemini(); }
+    </script>
+</body>
+</html>
